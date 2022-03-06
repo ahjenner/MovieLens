@@ -1,0 +1,185 @@
+---
+title: "MovieLens project"
+author: "Angus Jenner"
+date: "05/03/2022"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+tinytex::install_tinytex()
+```
+
+```{r load MOVIE, include=FALSE, cache=TRUE}
+load("Movie_final.RData") # reloads my dataset
+```
+
+## Overview:
+
+This project was to use machine learning to build a movie recommendation system. The recommendation system will be evaluated on the root mean square error (RMSE) of its ratings predictions. The movielens dataset - which has 10,000,054 ratings from 69,878 unique users - was split into development and validation sets, where the validation set represented 10% of the total data. Ratings predictions were generated from the development set and applied to the validation set to determine a final RMSE.
+
+The movielens data set includes fields for user id, movie id, movie title, movie genres, the time of review (as a timestamp),and movie rating. Movie year was not recorded in its own field, but was able to be extracted via data cleaning.
+
+To develop a machine learning algorithm, the development set was split into training and test sets - where the test set represented 10% of the data in the development set. Algorithms were able to be evaluated using this data and once an algorithm had been selected, the final stage was to evaluate this (using the entire development set) against the final validation set. The final RMSE for the chosen algorithm is the primary deliverable of this report.
+ 
+## Methods:
+### Data cleaning:
+The first step of the process was to examine the data and determine what data cleaning could, and should, be completed. Movie year was not reported separately, but was included within parenthesis within the movie title (a character field). To extract this data and include it within its own numeric column, “right” and “left” functions were built. These functions take data and output a chosen number of characters counting from either the left or right of the data. An example of the procedure followed is included below.
+
+```{r}
+as.numeric(left(right("Toy Story (1995)", 5), 4))
+```
+
+Genre data was reported for each movie within a single column. Since movies have multiple genres, the data reported all relevant genres within a single field, with genres split by “|”. This format makes it difficult to identify movies by single genres, e.g. all dramas, and as a result would hamper attempts to use this data to improve predictions. As a result a list of all unique genres was extracted and for each genre a column was set up which displayed TRUE if the movie was of that genre, or FALSE if it was not. This allowed one to build algorithms that, for example, could consider users who have a preference for/or against certain genres. After determining the unique genres reported - using the XXX function - the grepl function was used to build columns that displayed TRUE or FALSE for each genre.
+
+```{r, evaluate = FALSE}
+Comedy = grepl("Comedy", genres, fixed = TRUE)
+```
+### Data exploration, visualisation and relevant insights:
+To explore whether movie specific effects would be needed, each movie's average rating was plotted as a histogram. This plot shows a right skewed distribution - mean = 3.51, standard deviation = 1.06 . As expected, there was wide variation in average movie ratings and therefore it was important to include movie specific effects within the model. If there were no variation in average movie ratings, these effects would not be needed. 
+
+```{r, echo=FALSE}
+avg_mov_hist
+```
+
+As would be expected there was also variation in user effects - i.e. there were users that were particularly generous, or stingy with their ratings across all rated films. This can be seen within the below histogram.
+
+```{r, echo=FALSE}
+avg_user_hist
+```
+
+The effect persisted even when controlled for the films that the users were rating - see below for the variation in ratings for the film Toy Story. As a result there was a benefit to exploring user effects.
+
+```{r, echo=FALSE}
+avg_user_TS_hist
+```
+
+To develop a more complex algorithm, consideration also needed to be given to variation within users. The primary area of interest was in genre. It was anticipated that some individuals would, for example, have a preference for “Action” movies where others would have preferences against “Action” movies. To explore this, genres that corresponded to a large numbers of films - Action, Drama, Sci-Fi, Crime and Adventure - were examined. For each, the mean of the absolute difference between the average score for genre = TRUE movies, and genre = FALSE movies was computed across users within the training set. In addition, the standard deviation for the difference in average genre = TRUE movies, and genre = FALSE movies was computed across users. Also the proportion of all movies that had this genre = TRUE was computed.
+
+Each of these measures gave an indication of the importance of these genres from an algorithmic point of view. We would ideally like to explore a genre where there is wide deviation between ratings (given by the first two measures) and where this genre is popular (so there is maximum differentiation). To do this we computed a Weight term to help identify the best genres to explore - this Weight was the the product of the difference terms and the proportion of TRUE movies. A table of results is included below - Action and Drama achieved the highest weights.
+
+```{r, echo=FALSE}
+genre_m_sd_display
+```
+ 
+From this data it was anticipated that the machine learning algorithm could be improved by considering genre dependent user effects, as opposed to just user effects - i.e. include users' preferences over different genres.
+
+### Modeling approach:
+
+It was deemed useful to start with a more simple algorithm and build additional layers of complexity onto this algorithm. This approach allowed one to examine the improvement that an additional layer of complexity had on the prediction accuracy - reported in terms of RMSE. To start, therefore, the overall mean rating (across all movies and users) was considered as the baseline algorithm. On top of this, as alluded to in the data exploration section, additional layers were built on top of this. Movie effects, user effects and genre dependent user effects.
+
+Work was also completed with the recommenderlab package (Michael Hahsler (2016)). When applied to a small subset of the data this package improved predictions markedly. This approach, however, had to be abandoned since the hardware R was running on did not have enough memory to deal with the size of the development dataset - even when extra work was completed to run from a sparse matrix.
+
+## Results:
+
+### Algorithm 1: Using the mean rating to predict ratings
+This was the baseline algorithm, which enabled a RMSE floor against which to compare other algorithms. The mean rating across all ratings in the training set was taken and the RMSE computed against the test set.
+
+```{r, echo=FALSE}
+algorithms1
+```
+
+### Algorithm 2: Computing movie effects
+As noted within the data exploration section, there is variation in movies' average ratings - implying differences in quality. As a result one can predict a user's rating of a movie by using the movie's average rating. 
+
+```{r, echo=FALSE}
+algorithms2
+```
+
+### Algorithm 3: Computing movie effects and user effects
+As well as variation within movies, there was also variation between users - different users rating the same films differently. By including a term which represented how the user's rating differs from the average rating of that film (i.e. algorithm 2) additional accuracy was obtained.
+
+```{r, echo=FALSE}
+algorithms3
+```
+
+### Would regularisation improve estimates?
+Following the first three algorithms, it was noted that movies with few ratings, and users with few reviews were likely to excessively weighted within our algorithms. For example. if a movie were to have a single five star review, this would be predicted for that movie within the test set. In the same way a user who reviewed a single film five stars would be expected to be a very generous rater. This is not an inference that we wish to make given the small amount of data relied on. 
+
+As a result, the best and worst movies were examined to understand if this small n problem was occurring.
+
+```{r, echo=FALSE}
+best_movies
+```
+
+```{r, echo=FALSE}
+worst_movies
+```
+
+As can be seen there are many cases where there are very few reviews (often only one) in these groups - regularisation is needed. Regularisation attempts to counteract this issue by increasing the value of the denominator when averaging takes place - rather than dividing by n, one divides by n + lambda. For small values of n this makes a big difference, but for large values of n this makes far less of a difference. As a result, small n items are downweighted relative to high n items. To demonstrate a regularisation factor of 3 was used - results below:
+
+```{r, echo=FALSE}
+best_movies_reg
+```
+
+```{r, echo=FALSE}
+worst_movies_reg
+```
+
+These results are much more plausible. As a result regularisation will be used.
+
+### Algorithm 4: Regularised movie effects (user effects excluded)
+One issue with regularisation is choosing of the optimal lambda which should be chosen to maximise the accuracy of the algorithm. To do this, cross validation was used. For the movie-only regularised effects, the value of lambda that maximised accuracy was 1.5.
+
+```{r, echo=FALSE}
+algorithms4
+```
+
+### Algorithm 5: Regularised movie and user effects
+Regularisation was done now for both user and movie effects. Again cross-validation was used to choose the optimal lambda to be used for both the user and movie effects. In this algorithm both effects used the same value of lambda - technically different values of lambda could be used but for memory purposes the cross validation was limited to one variable. The value of lambda that maximimsed accuracy was 5. Relevant RMSE reported below - an improvement on the non-regularised version (Algorithm 3). 
+
+```{r, echo=FALSE}
+algorithms5
+```
+
+### Algorithm 6: Regularised movie and genre-dependent user effects
+As noted in the data exploration section, one was expected to gain accuracy by splitting users' average ratings by whether the film was a certain genre or not. The two genres that scored highest on the Weight measure were Action and Drama. As a result, Action and Drama were considered separately:
+
+Some work was required to prepare an genre-dependent user effects matrix to refer to - once this was developed, the merge (rather than the left-join) function could be used to match by both user and genre at the same time.
+
+#### Regularised movie and Action-dependent user effects
+
+```{r, echo=FALSE}
+algorithms6A
+```
+
+#### Regularised movie and Drama-dependent user effects
+
+```{r, echo=FALSE}
+algorithms6B
+```
+
+The action-dependent user effects improved accuracy marginally more. 
+
+### Algorithm 7: Regularised movie and two sets of genre-dependent user effects
+It was clear from Algorithm 6A and 6B that individual genre-dependent user effects improved accuracy. It stands to reason that including genre-dependent effects for both of these genres within the same algorithm should improve accuracy. In theory one should be able to do this for all genres, but limitations of laptop memory meant that a maximum of two genres could be considered.
+
+#### Regularised movie, Action-dependent user effects and Drama-dependent user effects
+
+```{r, echo=FALSE}
+algorithms7
+```
+
+The performance of the algorithm was improved with the addition of both genre-dependent user effects. It is anticipated that with each added genre the improvement in accuracy would be smaller.
+
+### Final algorithm to be evaluated:
+Algorithm 7 will be used on the entire development set to make predictions - and compute a final RMSE - for the validation set. This algorithm was chosen as it shows evidence of improving the accuracy of predictions while also being manageable on the hardware being used, where memory limits have served to be an issue.
+
+The RMSE recorded for the validation set was 0.858301.
+
+```{r, echo=FALSE}
+final_algorithm
+```
+
+## Conclusion:
+Recommendation algorithms are a useful demonstration of machine learning in practice. This report explored a movie rating dataset and explored the extent to which prediction accuracy could be improved, the results of which could be used for recommendation purposes. The report explored movie and user effects and then incorporated additional genre data (extracted through data cleaning) to define genre-specific effects. The rationale behind this is that there are individuals who have strong genre preferences and as a result additional prediction accuracy could be obtained by utilising these. Algorithms were also improved via the use of regularisation. 
+
+This report was, however, limited by the memory on available hardware. The recommendation lab package was explored, but the dataset was too large for computation on this hardware. This approach therefore had to be abandoned. The memory issues also impacted the ability to cross-validate multiple regularisation factors at a single time (in the final algorithm the movie and action-dependent user-effects have a pooled lambda), and stopped additional genre-specific user effects being added to the model - the final algorithm is limited to two of these. 
+
+To improve the final algorithm, future work should take place on hardware with more memory to remove the limitations faced within this project.
+
+## References:
+Michael Hahsler (2016). [recommenderlab: A Framework for Developing and Testing Recommendation Algorithms](https://CRAN.R-project.org/package=recommenderlab/vignettes/recommenderlab.pdf), R package. https://CRAN.R-project.org/package=recommenderlab
